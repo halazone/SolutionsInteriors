@@ -1,17 +1,107 @@
-# Solutions Interiors Website
+# Solutions Interiors — Website
 
-Source control for the Solutions Interiors company website rebuild (https://www.solutionsinteriors.com/), est. 2013, Giza, Egypt.
+Source of record for the Solutions Interiors company website: a single self-contained
+HTML page (with an EN/AR bilingual toggle, light/dark theme, product catalogue
+flipbooks, and a projects gallery) rebuilt from the company's real WordPress content,
+photos, and product catalogues.
+
+The live working preview is published as a Claude Artifact and updated after every
+round of feedback:
+https://claude.ai/code/artifact/083fadb8-2d8c-4355-bae3-9d740d35a4cc
+
+## Status
+
+Design/content is settled through Round 3 feedback. Deployment path is settled:
+a plain **static site** (same HTML/CSS/JS as this repo, images as separate files
+instead of base64) uploaded directly to the existing Hostinger hosting (WordPress
+Starter plan) — no WordPress, no CMS. See `docs/decisions.md` for the full
+reasoning and the launch sequencing (old-site backup subdomain → photo quality
+pass → static export → upload).
 
 ## Repo layout
 
-- `site/index.html` — the current website, as one self-contained HTML file (mirrors the live published version).
-- `docs/PROJECT_STATUS.md` — company facts, hosting/domain/email setup, and a full status log of what's done and what's still open.
-- `CHANGELOG.md` — running history of every change, feature, and fix, newest first. Updated every time the site changes.
+```
+src/            Page source, split into fragments that get concatenated at build time:
+                  index.template.html  — <head>, CSS, page shell (with {{IMG:...}} tokens
+                                          and a <!-- BODY_PLACEHOLDER --> marker)
+                  body1.html           — header, hero, about, process, why-us
+                  body2.html           — products section + flipbook modal
+                  body3.html           — projects, clients, contact, footer, all page JS
 
-## Workflow
+assets/optimized/       Every image used by the site, resized/compressed to fit the
+                        artifact-preview's 16MB cap. Logos, thumbnails, hero photos,
+                        and the source for anything not in optimized_hires/.
+assets/optimized_hires/ Higher-quality re-export of the 121 curated project gallery
+                        photos, for the static site build (no 16MB cap to work
+                        around there). See tools/curate_projects_hires.py.
 
-This repo is the project's system of record going forward. Every round of edits to the site gets:
+tools/          Build + content-pipeline scripts (Python):
+                  build.py              — artifact-preview build: concatenates
+                                          src/*.html, replaces every {{IMG:name}}
+                                          token with a base64 data URI from
+                                          assets/optimized/, writes dist/.
+                  build_static.py       — static-site build: same src/*.html, but
+                                          images are copied out as real files
+                                          (preferring assets/optimized_hires/) and
+                                          referenced by relative path, writes
+                                          dist_static/. This is what gets uploaded
+                                          to Hostinger.
+                  curate_projects.py    — resizes/compresses a curated set of raw
+                                          project photos into assets/optimized/p3_*.jpg
+                  curate_projects_hires.py — same curation, exported at static-site
+                                          quality into assets/optimized_hires/
+                  process_logos.py      — background-removes + canvas-fits client logos
+                  process_thumbs.py     — resizes/compresses product thumbnails
+                  make_contact_sheets.py— builds contact-sheet montages for photo curation
+                  select_project_photos.py — scores + de-dups raw project photos
+                                          (sharpness/contrast/exposure + dhash)
+                                          to pick the best-first, up-to-15 set
+                                          per project
+                  fix_logo_transparency.py — repairs enclosed-hole background-removal
+                                          bugs in already-processed logo PNGs
+                  render_catalogue_hires.py — re-renders catalogue PDFs at native
+                                          resolution (120 DPI) for the flipbook
 
-1. An updated `site/index.html`.
-2. A new entry at the top of `CHANGELOG.md` describing what changed and why.
-3. An update to `docs/PROJECT_STATUS.md` if it affects open items, infrastructure, or company facts.
+dist/           Artifact build output — the single-file HTML published as the artifact
+                preview. Regenerated by tools/build.py; don't hand-edit it.
+
+dist_static/    Static-site build output (gitignored — regenerate, don't commit):
+                index.html + assets/img/. Regenerated by tools/build_static.py; this
+                is what actually gets uploaded to Hostinger's file manager.
+
+docs/           Project documentation (see below).
+```
+
+## How to rebuild the site
+
+For the artifact preview (what's published to the Claude Artifact URL above):
+
+```
+cd SolutionsInteriors
+python3 tools/build.py
+```
+
+This writes `dist/solutions_interiors_site.html`.
+
+For the static site (what gets uploaded to Hostinger):
+
+```
+cd SolutionsInteriors
+python3 tools/build_static.py
+```
+
+This writes `dist_static/index.html` + `dist_static/assets/img/*`. Upload the
+*contents* of `dist_static/` (not the folder itself) into the target directory on
+Hostinger, keeping the `assets/img/` structure intact.
+
+**Size budget:** the artifact host caps a published page at 16MB, so images in
+`assets/optimized/` are compressed to fit under that ceiling. That constraint is
+specific to the artifact-preview format and does not apply to `build_static.py`'s
+output — real hosting has no shared page-size budget, which is why the project
+photos get a separate, higher-quality export in `assets/optimized_hires/` for the
+static build.
+
+## Documentation
+
+- `docs/CHANGELOG.md` — every round of feedback and what changed, in order.
+- `docs/decisions.md` — open/settled decisions about hosting, CMS choice, etc.
